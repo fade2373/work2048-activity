@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>2048 · 数字实验室</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f5f1e9;color:#302f2b;font-family:system-ui,-apple-system,sans-serif;min-height:100svh;display:grid;place-items:center;padding:24px}main{width:min(100%,440px)}.eyebrow{letter-spacing:3px;font-size:12px;color:#716f65}header{display:flex;align-items:center;justify-content:space-between;gap:16px}h1{font-size:76px;letter-spacing:-6px;margin:10px 0;font-weight:850}.scores{display:flex;gap:8px}.score{background:#e7e1d5;padding:10px 14px;border-radius:12px;text-align:center;font-size:11px;color:#646156}.score b{display:block;color:#302f2b;font-size:22px;font-variant-numeric:tabular-nums}.toolbar{display:flex;justify-content:space-between;align-items:center;margin:12px 0 20px;gap:10px}button{font:inherit;border:0;border-radius:10px;background:#284e42;color:white;padding:12px 18px;cursor:pointer}button:hover{background:#1c3b31}button:focus-visible{outline:3px solid #c0793e;outline-offset:3px}.board-wrap{position:relative}.board{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:10px;background:#b8afa0;border-radius:16px;touch-action:none;user-select:none;outline-offset:5px}.tile{aspect-ratio:1;display:grid;place-items:center;border-radius:9px;background:#d1c9bb;font-size:36px;font-weight:750;font-variant-numeric:tabular-nums;color:#fff;transition:background .12s}.tile[data-value="2"]{background:#eee9df;color:#555146}.tile[data-value="4"]{background:#e9dfc9;color:#555146}.tile[data-value="8"]{background:#c4a276}.tile[data-value="16"]{background:#bf885b}.tile[data-value="32"]{background:#bf714d}.tile[data-value="64"]{background:#a9563e}.tile[data-value="128"]{background:#84976b;font-size:31px}.tile[data-value="256"]{background:#608064;font-size:31px}.tile[data-value="512"]{background:#416e58;font-size:31px}.tile[data-value="1024"]{background:#305846;font-size:25px}.tile[data-value="2048"]{background:#d3a439;font-size:25px}.tile.large{background:#233e34;font-size:23px}.overlay{position:absolute;inset:0;border-radius:16px;background:#f5f1e9ed;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px}.overlay[hidden]{display:none}.overlay h2{font-size:30px;margin:0 0 12px}.overlay button{margin:5px}.help{font-size:14px;line-height:1.8;color:#716f65;margin-top:24px}.help strong{color:#302f2b}footer{margin-top:24px;border-top:1px solid #ded7ca;padding-top:16px;color:#8b877b;font-size:11px;letter-spacing:1px}#status{min-height:22px;font-size:13px;color:#284e42}@media(max-width:380px){body{padding:16px}.board{gap:7px;padding:7px}.tile{font-size:30px}h1{font-size:64px}.score{padding:9px}.toolbar{font-size:13px}}
+</style>
+<main>
+ <div class="eyebrow">数字实验室 / NUMBER LAB</div>
+ <header><h1>2048</h1><div class="scores"><div class="score">得分<b id="score">0</b></div><div class="score">最佳<b id="best">0</b></div></div></header>
+ <div class="toolbar"><span>从 2 开始，让数字生长。</span><button id="restart">新的一局</button></div>
+ <div class="board-wrap">
+  <div class="board" id="board" role="group" tabindex="0" aria-label="2048 游戏棋盘，使用方向键移动"></div>
+  <div class="overlay" id="overlay" hidden><h2 id="message"></h2><p id="detail"></p><button id="continue" hidden>继续挑战</button><button id="again">再来一局</button></div>
+ </div>
+ <p id="status" role="status" aria-live="polite"></p>
+ <div class="help"><strong>玩法</strong>　使用方向键或在棋盘上滑动，让相同数字相遇、合并。合成 <strong>2048</strong> 即可获胜。<br>进度自动保存在当前浏览器，随时回来继续。</div>
+ <footer>AI × HUAWEI CLOUD · 开放能力闯关作品</footer>
+</main>
+<script>
+'use strict';
+const storage={get(key){try{return localStorage.getItem(key)}catch{return null}},set(key,value){try{localStorage.setItem(key,value)}catch{}}};
+let cells=Array(16).fill(0),score=0,best=Number(storage.get('numberlab-best'))||0,continued=false,pendingRestart=false;
+const board=document.querySelector('#board'),overlay=document.querySelector('#overlay');
+for(let i=0;i<16;i++){const tile=document.createElement('div');tile.className='tile';board.append(tile)}
+// Compact first, then merge each pair once: 2,2,2,2 becomes 4,4,0,0.
+function mergeLine(line){const values=line.filter(Boolean),out=[];let gain=0;for(let i=0;i<values.length;i++){if(values[i]===values[i+1]){const n=values[i]*2;out.push(n);gain+=n;i++}else out.push(values[i])}while(out.length<4)out.push(0);return {line:out,gain}}
+function calculateMove(input,direction){const result=input.slice();let gain=0;for(let n=0;n<4;n++){let indices=Array.from({length:4},(_,i)=>direction==='left'||direction==='right'?n*4+i:i*4+n);if(direction==='right'||direction==='down')indices.reverse();const merged=mergeLine(indices.map(i=>input[i]));gain+=merged.gain;indices.forEach((index,i)=>{result[index]=merged.line[i]})}return {cells:result,gain,changed:result.some((v,i)=>v!==input[i])}}
+function canMove(input){return input.some(v=>v===0)||input.some((v,i)=>(i%4<3&&v===input[i+1])||(i<12&&v===input[i+4]))}
+function spawn(){const empty=cells.map((v,i)=>v===0?i:-1).filter(i=>i>=0);if(empty.length)cells[empty[Math.floor(Math.random()*empty.length)]]=Math.random()<.9?2:4}
+function save(){storage.set('numberlab-save',JSON.stringify({cells,score,continued}));storage.set('numberlab-best',String(best))}
+function render(){[...board.children].forEach((tile,i)=>{const v=cells[i];tile.textContent=v||'';tile.dataset.value=v;tile.className='tile'+(v>2048?' large':'');tile.setAttribute('aria-label',`第 ${Math.floor(i/4)+1} 行第 ${i%4+1} 列：${v||'空'}`)});document.querySelector('#score').textContent=score;document.querySelector('#best').textContent=best;overlay.hidden=true;document.querySelector('#continue').hidden=true;if(!continued&&cells.some(v=>v>=2048)){document.querySelector('#message').textContent='合成 2048！';document.querySelector('#detail').textContent='每一次合并，都是新的可能。';document.querySelector('#continue').hidden=false;overlay.hidden=false}else if(!canMove(cells)){document.querySelector('#message').textContent='本局结束';document.querySelector('#detail').textContent=`最终得分 ${score}，再试一次吧。`;overlay.hidden=false}save()}
+function move(direction){if(!overlay.hidden)return;pendingRestart=false;document.querySelector('#restart').textContent='新的一局';const next=calculateMove(cells,direction);if(!next.changed)return;cells=next.cells;score+=next.gain;best=Math.max(best,score);spawn();render();document.querySelector('#status').textContent=next.gain?`合并得分 +${next.gain}`:''}
+function newGame(){cells=Array(16).fill(0);score=0;continued=false;pendingRestart=false;document.querySelector('#restart').textContent='新的一局';spawn();spawn();render();document.querySelector('#status').textContent='新的一局已开始';board.focus({preventScroll:true})}
+document.querySelector('#restart').onclick=()=>{if(!pendingRestart&&score>0&&canMove(cells)){pendingRestart=true;document.querySelector('#restart').textContent='确认重开';document.querySelector('#status').textContent='再次点击即可重新开始';return}newGame()};
+document.querySelector('#again').onclick=newGame;document.querySelector('#continue').onclick=()=>{continued=true;render();board.focus({preventScroll:true})};
+document.addEventListener('keydown',e=>{const direction={ArrowLeft:'left',ArrowRight:'right',ArrowUp:'up',ArrowDown:'down'}[e.key];if(direction&&!['BUTTON','INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){e.preventDefault();move(direction)}});
+let touchStart=null;
+board.addEventListener('pointerdown',e=>{if(!e.isPrimary)return;touchStart={x:e.clientX,y:e.clientY,id:e.pointerId};board.setPointerCapture(e.pointerId);board.focus({preventScroll:true})});
+board.addEventListener('pointerup',e=>{if(!touchStart||touchStart.id!==e.pointerId)return;const dx=e.clientX-touchStart.x,dy=e.clientY-touchStart.y;touchStart=null;if(Math.max(Math.abs(dx),Math.abs(dy))<24)return;move(Math.abs(dx)>Math.abs(dy)?dx>0?'right':'left':dy>0?'down':'up')});
+board.addEventListener('pointercancel',()=>{touchStart=null});
+try{const saved=JSON.parse(storage.get('numberlab-save'));if(saved&&Array.isArray(saved.cells)&&saved.cells.length===16&&saved.cells.every(v=>Number.isInteger(v)&&v>=0&&(v===0||Number.isInteger(Math.log2(v))))&&saved.cells.some(Boolean)&&Number.isSafeInteger(saved.score)&&saved.score>=0){cells=saved.cells;score=saved.score;continued=!!saved.continued;best=Math.max(best,score);render()}else newGame()}catch{newGame()}
+</script>
+</html>
